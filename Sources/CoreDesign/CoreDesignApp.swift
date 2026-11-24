@@ -12,7 +12,7 @@ struct CoreDesignApp: App {
     @StateObject private var updates = AppUpdates()
 
     var body: some Scene {
-        Window("CoreDesign", id: "core-design") {
+        Window("", id: "core-design") {
             Workspace(store: store)
                 .frame(minWidth: 980, minHeight: 620)
         }
