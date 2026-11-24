@@ -491,8 +491,11 @@ struct Workspace: View {
                 .font(design.body())
                 .foregroundStyle(design.ink)
                 .focused($briefFocused)
-                .padding(Space.sm)
+                .padding(Space.lg)
                 .frame(maxWidth: .infinity, minHeight: 144, alignment: .topLeading)
+                .containerRelativeFrame(.horizontal, alignment: .leading) { columnWidth, _ in
+                    max(0, columnWidth - 2 * Space.xl) * 0.6
+                }
                 .background {
                     RoundedRectangle(cornerRadius: 8).fill(design.surface)
                         .onTapGesture { briefFocused = true }
