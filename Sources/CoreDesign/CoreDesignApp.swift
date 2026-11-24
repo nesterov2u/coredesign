@@ -319,17 +319,11 @@ struct Workspace: View {
     }
 
     private func task(_ item: WorkItem) -> some View {
-        GeometryReader { geometry in
-            taskLayout(item, chatGutter: min(224, max(Space.xl, geometry.size.width - 1056)))
-        }
-    }
-
-    private func taskLayout(_ item: WorkItem, chatGutter: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 0) {
             if sidebar { taskSidebar(item) }
             VStack(spacing: 0) {
                 taskToolbar(item)
-                taskBody(item, chatGutter: chatGutter)
+                taskBody(item)
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -379,7 +373,7 @@ struct Workspace: View {
         .background(design.canvas)
     }
 
-    private func taskBody(_ item: WorkItem, chatGutter: CGFloat) -> some View {
+    private func taskBody(_ item: WorkItem) -> some View {
         HStack(alignment: .top, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.lg) {
@@ -423,7 +417,6 @@ struct Workspace: View {
                 })
                 .id(item.id)
                 .frame(width: 400)
-                .padding(.trailing, chatGutter)
                 .padding(.bottom, Space.xl)
             }
         }
