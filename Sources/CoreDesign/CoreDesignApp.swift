@@ -509,7 +509,7 @@ struct Workspace: View {
         ForEach(statuses) { status in
             let group = store.sorted(status)
             if !group.isEmpty {
-                Text(status.rawValue).font(design.ui(13)).foregroundStyle(design.muted)
+                Text(status.rawValue).font(design.ui(13)).foregroundStyle(design.accent)
                 VStack(alignment: .leading, spacing: Space.xxs) {
                     ForEach(group) { entry in
                         Button { open(entry.id) } label: {
