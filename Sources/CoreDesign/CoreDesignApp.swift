@@ -158,7 +158,8 @@ struct Workspace: View {
                     .font(design.heading(32))
                     .accessibilityAddTraits(.isHeader)
                 ChipButton(title: "Новая задача  ▾", style: .primary) {
-                    step = step == .none ? .templates : .none
+                    if step == .none { step = .templates }
+                    else { cancelCreation() }
                 }
                 .keyboardShortcut("n", modifiers: .command)
                 listPicker
@@ -207,9 +208,14 @@ struct Workspace: View {
                         prepareTask(name)
                     }
                 }
-                ChipButton(title: "Пустая задача") { prepareTask(nil) }
+                HStack(spacing: Space.sm) {
+                    ChipButton(title: "Пустая задача") { prepareTask(nil) }
+                    Spacer()
+                    cancelCreationButton
+                }
             }
             .padding(Space.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(design.field, in: RoundedRectangle(cornerRadius: 8))
         case .title:
             VStack(alignment: .leading, spacing: Space.sm) {
@@ -221,17 +227,32 @@ struct Workspace: View {
                         .labelsHidden()
                         .textFieldStyle(.plain)
                         .padding(Space.sm)
+                        .frame(maxWidth: .infinity, minHeight: 42)
                         .background(design.surface, in: RoundedRectangle(cornerRadius: 6))
-                        .frame(width: 236)
                         .focused($titleFocused)
                         .onSubmit(createTask)
+                        .onExitCommand(perform: cancelCreation)
+                    cancelCreationButton
                     ChipButton(title: "Создать задачу", style: .primary, action: createTask)
                         .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .padding(Space.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(design.field, in: RoundedRectangle(cornerRadius: 8))
         }
+    }
+
+    private var cancelCreationButton: some View {
+        ChipButton(title: "Отмена", action: cancelCreation)
+            .keyboardShortcut(.cancelAction)
+    }
+
+    private func cancelCreation() {
+        titleFocused = false
+        title = ""
+        template = nil
+        step = .none
     }
 
     private func prepareTask(_ selectedTemplate: String?) {
