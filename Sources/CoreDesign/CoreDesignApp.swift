@@ -59,7 +59,6 @@ struct Workspace: View {
     @AppStorage("darkMode") private var dark = false
     @ViewState private var selected: UUID?
     @ViewState private var list: TaskList = .today
-    @ViewState private var sidebar = true
     @ViewState private var step = CreateStep.none
     @ViewState private var template: String?
     @ViewState private var title = ""
@@ -269,7 +268,6 @@ struct Workspace: View {
     private func createTask() {
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, let id = store.create(title: name, template: template) else { return }
-        sidebar = true
         list = .today
         open(id)
     }
@@ -346,7 +344,7 @@ struct Workspace: View {
 
     private func task(_ item: WorkItem) -> some View {
         HStack(alignment: .top, spacing: 0) {
-            if sidebar { taskSidebar(item) }
+            taskSidebar(item)
             VStack(spacing: 0) {
                 taskToolbar(item)
                 taskBody(item)
@@ -403,19 +401,10 @@ struct Workspace: View {
         HStack(alignment: .top, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.lg) {
-                    HStack(spacing: Space.sm) {
-                        Button {
-                            sidebar.toggle()
-                        } label: {
-                            Image(systemName: "sidebar.left").foregroundStyle(design.muted)
-                        }
-                        .buttonStyle(PressStyle())
-                        .help(sidebar ? "Свернуть список задач" : "Показать список задач")
-                        Button("Задачи / \(list.rawValue)") { navigate(list) }
-                            .buttonStyle(PressStyle())
-                            .font(design.ui(13, bold: false))
-                            .foregroundStyle(design.muted)
+                    ChipButton(title: "Назад", compact: true, icon: "arrow.left") {
+                        navigate(list)
                     }
+                    .help("Вернуться к списку задач")
                     Text(item.title).font(design.heading(28)).fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: Space.md) {
                         statusMenu(item, asField: true)
