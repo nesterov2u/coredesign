@@ -40,20 +40,22 @@ struct CanvasLayer: Codable, Identifiable {
     var icon: String { material == nil ? "textformat" : "photo" }
 }
 
-struct TaskCanvas<TaskListContent: View>: View {
+struct TaskCanvas: View {
     @Environment(\.design) private var design
     let store: ProjectStore
     let item: WorkItem
     let back: () -> Void
-    @ViewBuilder var tasks: () -> TaskListContent
 
     @ViewState private var frameID: UUID?
     @ViewState private var layerID: UUID?
-    @ViewState private var zoom: Int?
+    @ViewState private var zoom: CGFloat?
+    @GestureState private var magnification: CGFloat = 1
+    @FocusState private var boardFocused: Bool
+    @Environment(\.undoManager) private var undoManager
+    @ViewState private var collapsed: Set<UUID> = []
     @ViewState private var importFrameID: UUID?
     @ViewState private var importing = false
     @ViewState private var removingFrame = false
-    @ViewState private var showsTasks = false
 
     private var frames: [CanvasFrame] { item.canvasFrames ?? [] }
     private var frame: CanvasFrame? { frames.first { $0.id == frameID } ?? frames.first }
@@ -63,11 +65,7 @@ struct TaskCanvas<TaskListContent: View>: View {
         HStack(spacing: 0) {
             hierarchy
             Divider()
-            VStack(spacing: 0) {
-                board
-                Divider()
-                tools
-            }
+            board
             if let frame {
                 Divider()
                 inspector(frame)
@@ -79,8 +77,7 @@ struct TaskCanvas<TaskListContent: View>: View {
             switch result {
             case .success(let files):
                 if let id = store.attach(files, to: item.id, canvasFrame: importFrameID).last {
-                    frameID = importFrameID
-                    layerID = id
+                    selectLayer(id, in: importFrameID)
                 }
             case .failure(let error):
                 store.issue = error.localizedDescription
@@ -98,163 +95,229 @@ struct TaskCanvas<TaskListContent: View>: View {
     }
 
     private var hierarchy: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.md) {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Space.sm) {
                 ChipButton(title: "Назад", compact: true, icon: "arrow.left", action: back)
-                Text(item.title).font(design.heading(15)).lineLimit(2)
-                Picker("Боковая панель", selection: $showsTasks) {
-                    Text("Задачи").tag(true)
-                    Text("Слои").tag(false)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                if showsTasks {
-                    tasks()
-                } else {
-                    sectionTitle("Фреймы")
-                    ForEach(frames) { entry in
-                        entryButton(entry.name, icon: "rectangle", selected: frame?.id == entry.id && layer == nil) {
-                            frameID = entry.id
-                            layerID = nil
-                        }
-                    }
-                    if let frame {
-                        Divider()
-                        sectionTitle("Слои")
-                        ForEach(frame.layers.reversed()) { entry in
-                            entryButton(entry.name, icon: entry.icon, selected: layerID == entry.id) { layerID = entry.id }
-                        }
-                        if frame.layers.isEmpty {
-                            Text("Слоёв пока нет").font(design.body(12)).foregroundStyle(design.muted)
-                        }
-                    }
-                }
+                Text(item.title).font(design.heading(14)).lineLimit(2)
             }
             .padding(Space.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Divider()
+            HStack {
+                sectionTitle("Слои")
+                Spacer()
+                tool("Создать фрейм", icon: "plus", action: addFrame)
+            }
+            .padding(.leading, Space.md)
+            .padding(.trailing, Space.xxs)
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(frames) { entry in
+                        HStack(spacing: 0) {
+                            tool(collapsed.contains(entry.id) ? "Развернуть слои" : "Свернуть слои",
+                                 icon: collapsed.contains(entry.id) ? "chevron.right" : "chevron.down", width: 22) {
+                                if collapsed.remove(entry.id) == nil { collapsed.insert(entry.id) }
+                            }
+                            .opacity(entry.layers.isEmpty ? 0 : 1)
+                            .disabled(entry.layers.isEmpty)
+                            entryButton(entry.name, icon: "rectangle", selected: frame?.id == entry.id && layer == nil) {
+                                frameID = entry.id
+                                layerID = nil
+                            }
+                        }
+                        if !collapsed.contains(entry.id) {
+                            ForEach(entry.layers.reversed()) { child in
+                                entryButton(child.name, icon: child.icon, selected: layerID == child.id) {
+                                    selectLayer(child.id, in: entry.id)
+                                }
+                                .padding(.leading, 22)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        removeLayer(child.id, in: entry.id)
+                                    } label: {
+                                        Label("Удалить слой", systemImage: "trash")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, Space.xs)
+            }
         }
-        .frame(width: 172)
-        .background(design.field)
+        .frame(width: 188)
+        .background(design.surface)
     }
 
     private func entryButton(_ name: String, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(name, systemImage: icon)
-                .labelStyle(.titleAndIcon)
-                .font(design.ui(12, bold: selected))
-                .lineLimit(1)
-                .foregroundStyle(selected ? design.accent : design.ink)
-                .padding(.horizontal, Space.sm)
-                .frame(maxWidth: .infinity, minHeight: 29, alignment: .leading)
-                .background(selected ? design.tint : Color.clear, in: RoundedRectangle(cornerRadius: 7))
-                .contentShape(Rectangle())
+            HStack(spacing: Space.sm) {
+                Image(systemName: icon).frame(width: 14)
+                    .foregroundStyle(selected ? design.accent : design.muted)
+                    .accessibilityHidden(true)
+                Text(name).lineLimit(1)
+            }
+            .font(design.ui(12, bold: selected))
+            .foregroundStyle(design.ink)
+            .padding(.horizontal, Space.xs)
+            .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+            .background(selected ? design.tint : Color.clear, in: RoundedRectangle(cornerRadius: 5))
+            .contentShape(Rectangle())
         }
         .buttonStyle(PressStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])
         .help(name)
     }
 
-    @ViewBuilder private var board: some View {
-        if let frame {
-            GeometryReader { viewport in
-                let fit = min(max(1, viewport.size.width - 48) / CGFloat(frame.width),
-                              max(1, viewport.size.height - 64) / CGFloat(frame.height), 1)
-                let scale = zoom.map { CGFloat($0) / 100 } ?? fit
+    private var board: some View {
+        GeometryReader { viewport in
+            if let frame {
+                let fit = min(max(1, viewport.size.width - 56) / CGFloat(frame.width),
+                              max(1, viewport.size.height - 116) / CGFloat(frame.height), 1)
+                let base = zoom ?? fit
+                let scale = boundedZoom(base * magnification)
                 ScrollView([.horizontal, .vertical]) {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         Text("\(frame.name) · \(frame.width) × \(frame.height)")
                             .font(design.ui(12))
-                            .foregroundStyle(design.muted)
+                            .foregroundStyle(layer == nil ? design.accent : design.muted)
                             .lineLimit(1)
-                            .frame(maxWidth: max(140, CGFloat(frame.width) * scale), alignment: .leading)
-                        CanvasArtboard(frame: frame, selection: $layerID, scale: scale, file: store.file) { change in
+                            .frame(maxWidth: max(136, CGFloat(frame.width) * scale), alignment: .leading)
+                        CanvasArtboard(frame: frame, selection: Binding(
+                            get: { layerID }, set: { selectLayer($0, in: frame.id) }
+                        ), scale: scale, file: store.file) { change in
                             editFrame(frame.id, change)
                         }
                     }
-                    .id(frame.id)
-                    .padding(24)
+                    .padding(.top, 32)
+                    .padding(.bottom, 68)
+                    .padding(.horizontal, 28)
                     .frame(minWidth: viewport.size.width, minHeight: viewport.size.height)
                 }
+                .id(frame.id)
+                .focusable()
+                .focused($boardFocused)
+                .focusEffectDisabled()
+                .onDeleteCommand {
+                    if let layerID { removeLayer(layerID, in: frame.id) }
+                }
+                .background {
+                    CanvasScrollZoom { delta in
+                        zoom = boundedZoom((zoom ?? fit) * exp(delta * 0.02))
+                    }
+                    .allowsHitTesting(false)
+                }
+                .simultaneousGesture(MagnifyGesture(minimumScaleDelta: 0)
+                    .updating($magnification) { value, state, _ in state = value.magnification }
+                    .onEnded { zoom = boundedZoom(base * $0.magnification) })
+                .overlay(alignment: .topTrailing) {
+                    zoomMenu(scale: scale).padding(Space.md)
+                }
+            } else {
+                VStack(spacing: Space.md) {
+                    Image(systemName: "rectangle.dashed").font(.system(size: 28)).foregroundStyle(design.muted)
+                        .accessibilityHidden(true)
+                    Text("На холсте пока пусто").font(design.heading(17))
+                    ChipButton(title: "Создать фрейм", style: .primary, compact: true, icon: "plus", action: addFrame)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        } else {
-            VStack(spacing: Space.md) {
-                Image(systemName: "rectangle.dashed").font(.system(size: 28)).foregroundStyle(design.muted)
-                    .accessibilityHidden(true)
-                Text("На холсте пока пусто").font(design.heading(17))
-                ChipButton(title: "Создать фрейм", style: .primary, compact: true, icon: "plus", action: addFrame)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(Space.md)
         }
+        .background(design.field)
+        .overlay(alignment: .bottom) {
+            tools.padding(.bottom, Space.lg)
+        }
+    }
+
+    private func zoomMenu(scale: CGFloat) -> some View {
+        let percentage = max(1, Int((scale * 100).rounded()))
+        return Menu {
+            Button("Увеличить") { zoom = boundedZoom(scale * 1.25) }
+            Button("Уменьшить") { zoom = boundedZoom(scale / 1.25) }
+            Divider()
+            Button("Вписать фрейм") { zoom = nil }
+            ForEach([25, 50, 100, 200, 400], id: \.self) { value in
+                Button("\(value)%") { zoom = CGFloat(value) / 100 }
+            }
+        } label: {
+            Text("\(percentage)%").monospacedDigit().font(design.ui(12))
+                .padding(.leading, Space.xs)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .padding(Space.xxs)
+        .background(design.surface, in: RoundedRectangle(cornerRadius: 7))
+        .hoverFeedback(cornerRadius: 7)
+        .accessibilityLabel("Масштаб холста")
+        .accessibilityValue("\(percentage)%")
+        .help("Масштаб: щипок или ⌘ + свайп двумя пальцами")
     }
 
     private var tools: some View {
-        ViewThatFits(in: .horizontal) {
-            toolStrip(compact: false)
-            toolStrip(compact: true)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, Space.sm)
-        .padding(.vertical, Space.sm)
-        .background(design.surface)
-    }
-
-    private func toolStrip(compact: Bool) -> some View {
         HStack(spacing: Space.xxs) {
-            tool("Фрейм", icon: "rectangle.badge.plus", compact: compact, action: addFrame)
-            tool("Текст", icon: "textformat", compact: compact, action: addText).disabled(frame == nil)
-            tool("Изображение", icon: "photo", compact: compact) {
+            tool("Выбрать фрейм", icon: "cursorarrow", active: frame != nil && layer == nil) {
+                layerID = nil
+                boardFocused = true
+            }
+            .disabled(frame == nil)
+            Divider().frame(height: 20)
+            tool("Фрейм", icon: "rectangle.badge.plus", action: addFrame)
+            tool("Текст", icon: "textformat", action: addText).disabled(frame == nil)
+            tool("Изображение", icon: "photo") {
                 importFrameID = frame?.id
                 importing = importFrameID != nil
             }
             .disabled(frame == nil)
             Divider().frame(height: 20)
-            Menu {
-                Button("По размеру окна") { zoom = nil }
-                ForEach([25, 50, 75, 100, 150, 200], id: \.self) { value in
-                    Button("\(value)%") { zoom = value }
-                }
-            } label: {
-                Text(zoom.map { "\($0)%" } ?? "Вписать")
-                    .font(design.ui(12))
+            tool("Удалить слой", icon: "trash") {
+                if let frame, let layerID { removeLayer(layerID, in: frame.id) }
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .hoverFeedback()
-            .accessibilityLabel("Масштаб холста")
-            .disabled(frame == nil)
+            .disabled(layer == nil)
         }
+        .padding(Space.xs)
+        .background(design.surface, in: RoundedRectangle(cornerRadius: 11))
+        .overlay { RoundedRectangle(cornerRadius: 11).strokeBorder(design.line).allowsHitTesting(false) }
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Инструменты холста")
     }
 
-    @ViewBuilder
-    private func tool(_ title: String, icon: String, compact: Bool, action: @escaping () -> Void) -> some View {
-        if compact {
-            Button(action: action) {
-                Image(systemName: icon)
-                    .frame(width: 30, height: 28)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PressStyle())
-            .accessibilityLabel(title)
-            .help(title)
-        } else {
-            ChipButton(title: title, compact: true, icon: icon, action: action)
+    private func tool(_ title: String, icon: String, width: CGFloat = 32, active: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: width == 22 ? 10 : 14, weight: .medium))
+                .frame(width: width, height: 30)
+                .foregroundStyle(active ? design.accent : design.ink)
+                .background(active ? design.tint : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                .contentShape(Rectangle())
         }
+        .buttonStyle(PressStyle())
+        .accessibilityLabel(title)
+        .help(title)
     }
 
     private func inspector(_ frame: CanvasFrame) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.md) {
                 if let layer {
-                    sectionTitle("Слой")
+                    HStack {
+                        sectionTitle(layer.material == nil ? "Текстовый слой" : "Изображение")
+                        Spacer()
+                        tool("Выше", icon: "arrow.up", width: 22) { moveLayer(layer.id, in: frame.id, by: 1) }
+                            .disabled(frame.layers.last?.id == layer.id)
+                        tool("Ниже", icon: "arrow.down", width: 22) { moveLayer(layer.id, in: frame.id, by: -1) }
+                            .disabled(frame.layers.first?.id == layer.id)
+                    }
                     TextField("Название слоя", text: layerValue(layer, \.name))
+                    Divider()
+                    sectionTitle("Положение")
                     HStack {
                         number("X", value: layerValue(layer, \.x), range: -8192...8192)
                         number("Y", value: layerValue(layer, \.y), range: -8192...8192)
                     }
+                    sectionTitle("Размер")
                     HStack {
-                        number("Ширина", value: layerValue(layer, \.width), range: 1...8192)
-                        number("Высота", value: layerValue(layer, \.height), range: 1...8192)
+                        number("Ширина", mark: "Ш", value: layerValue(layer, \.width), range: 1...8192)
+                        number("Высота", mark: "В", value: layerValue(layer, \.height), range: 1...8192)
                     }
                     if layer.material == nil {
                         Divider()
@@ -263,18 +326,15 @@ struct TaskCanvas<TaskListContent: View>: View {
                             .lineLimit(2...5)
                         number("Кегль", value: layerValue(layer, \.fontSize), range: 1...1024)
                         ColorPicker("Цвет текста", selection: color(layerValue(layer, \.fill)), supportsOpacity: false)
-                    } else {
-                        Text("Изображение вписывается в границы слоя с сохранением пропорций.")
-                            .foregroundStyle(design.muted)
                     }
-                    Divider()
-                    layerActions(frame, layer)
                 } else {
                     sectionTitle("Фрейм")
                     TextField("Имя фрейма", text: frameValue(frame, \.name))
+                    Divider()
+                    sectionTitle("Размер")
                     HStack {
-                        number("Ширина", value: frameValue(frame, \.width), range: 1...8192)
-                        number("Высота", value: frameValue(frame, \.height), range: 1...8192)
+                        number("Ширина", mark: "Ш", value: frameValue(frame, \.width), range: 1...8192)
+                        number("Высота", mark: "В", value: frameValue(frame, \.height), range: 1...8192)
                     }
                     Menu("Формат фрейма") {
                         ForEach(CanvasFrame.sizes, id: \.0) { name, width, height in
@@ -283,6 +343,8 @@ struct TaskCanvas<TaskListContent: View>: View {
                             }
                         }
                     }
+                    Divider()
+                    sectionTitle("Заливка")
                     ColorPicker("Фон фрейма", selection: color(frameValue(frame, \.fill)), supportsOpacity: false)
                     ChipButton(title: "Удалить фрейм", compact: true, icon: "trash") { removingFrame = true }
                 }
@@ -293,23 +355,8 @@ struct TaskCanvas<TaskListContent: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .id(layer?.id ?? frame.id)
         }
-        .frame(width: 182)
+        .frame(width: 194)
         .background(design.surface)
-    }
-
-    private func layerActions(_ frame: CanvasFrame, _ layer: CanvasLayer) -> some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
-            HStack(spacing: Space.xs) {
-                tool("Выше", icon: "arrow.up", compact: true) { moveLayer(layer.id, in: frame.id, by: 1) }
-                    .disabled(frame.layers.last?.id == layer.id)
-                tool("Ниже", icon: "arrow.down", compact: true) { moveLayer(layer.id, in: frame.id, by: -1) }
-                    .disabled(frame.layers.first?.id == layer.id)
-            }
-            ChipButton(title: "Удалить слой", compact: true, icon: "trash") {
-                editFrame(frame.id) { $0.layers.removeAll { $0.id == layer.id } }
-                layerID = nil
-            }
-        }
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -317,13 +364,18 @@ struct TaskCanvas<TaskListContent: View>: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    private func number(_ title: String, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
+    private func number(_ title: String, mark: String? = nil, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
         let bounded = Binding(get: { value.wrappedValue }, set: { value.wrappedValue = min(max($0, range.lowerBound), range.upperBound) })
-        return VStack(alignment: .leading, spacing: Space.xxs) {
-            Text(title).font(design.ui(11)).foregroundStyle(design.muted).accessibilityHidden(true)
+        return HStack(spacing: Space.xxs) {
+            Text(mark ?? title).font(design.ui(11)).foregroundStyle(design.muted).accessibilityHidden(true)
             TextField(title, value: bounded, format: .number.grouping(.never))
+                .textFieldStyle(.plain)
                 .multilineTextAlignment(.trailing)
+                .monospacedDigit()
         }
+        .padding(.horizontal, Space.sm)
+        .frame(height: 28)
+        .background(design.field, in: RoundedRectangle(cornerRadius: 6))
     }
 
     private func color(_ value: Binding<Int>) -> Binding<Color> {
@@ -378,7 +430,35 @@ struct TaskCanvas<TaskListContent: View>: View {
             fontSize: min(64, max(1, frame.height / 6))
         )
         editFrame(frame.id) { $0.layers.append(layer) }
-        layerID = layer.id
+        selectLayer(layer.id, in: frame.id)
+    }
+
+    private func selectLayer(_ id: UUID?, in frame: UUID) {
+        frameID = frame
+        layerID = id
+        if id != nil { collapsed.remove(frame) }
+        boardFocused = true
+    }
+
+    private func removeLayer(_ id: UUID, in frameID: UUID) {
+        guard let frame = frames.first(where: { $0.id == frameID }),
+              let index = frame.layers.firstIndex(where: { $0.id == id }) else { return }
+        let removed = frame.layers[index]
+        editFrame(frameID) { $0.layers.removeAll { $0.id == id } }
+        let workID = item.id
+        guard store.items.first(where: { $0.id == workID })?.canvasFrames?
+            .first(where: { $0.id == frameID })?.layers.contains(where: { $0.id == id }) == false else { return }
+        if layerID == id { layerID = nil }
+        undoManager?.registerUndo(withTarget: store) { store in
+            store.update(workID) { work in
+                guard let frameIndex = work.canvasFrames?.firstIndex(where: { $0.id == frameID }),
+                      var frame = work.canvasFrames?[frameIndex],
+                      !frame.layers.contains(where: { $0.id == id }) else { return }
+                frame.layers.insert(removed, at: min(index, frame.layers.count))
+                work.canvasFrames?[frameIndex] = frame
+            }
+        }
+        undoManager?.setActionName("Удаление слоя")
     }
 
     private func moveLayer(_ id: UUID, in frameID: UUID, by distance: Int) {
@@ -386,6 +466,38 @@ struct TaskCanvas<TaskListContent: View>: View {
             guard let index = frame.layers.firstIndex(where: { $0.id == id }),
                   frame.layers.indices.contains(index + distance) else { return }
             frame.layers.swapAt(index, index + distance)
+        }
+    }
+}
+
+private struct CanvasScrollZoom: NSViewRepresentable {
+    var zoom: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> ScrollMonitor { ScrollMonitor() }
+    func updateNSView(_ view: ScrollMonitor, context: Context) { view.zoom = zoom }
+
+    final class ScrollMonitor: NSView {
+        var zoom: (CGFloat) -> Void = { _ in }
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self, let window, event.window == window, event.hasPreciseScrollingDeltas,
+                      event.modifierFlags.contains(.command),
+                      bounds.contains(convert(event.locationInWindow, from: nil)) else { return event }
+                if event.momentumPhase.isEmpty, event.scrollingDeltaY != 0 {
+                    zoom(event.scrollingDeltaY)
+                }
+                return nil
+            }
+        }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
         }
     }
 }
@@ -526,6 +638,8 @@ private struct CanvasImage: View {
 private func boundedCanvasValue(_ value: CGFloat, in range: ClosedRange<Int>) -> Int {
     Int(min(max(value.rounded(), CGFloat(range.lowerBound)), CGFloat(range.upperBound)))
 }
+
+private func boundedZoom(_ scale: CGFloat) -> CGFloat { min(max(scale, 0.01), 8) }
 
 private func canvasColor(_ rgb: Int) -> Color {
     Color(red: Double((rgb >> 16) & 255) / 255,

@@ -477,15 +477,7 @@ struct Workspace: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             case .canvas:
-                TaskCanvas(store: store, item: item, back: { navigate(list) }) {
-                    Picker("Список задач", selection: $list) {
-                        ForEach(TaskList.allCases, id: \.self) { option in
-                            Text(option.rawValue).tag(option)
-                        }
-                    }
-                    .labelsHidden()
-                    taskGroups(item)
-                }
+                TaskCanvas(store: store, item: item, back: { navigate(list) })
                 .id(item.id)
             }
             if item.chatOpen {
