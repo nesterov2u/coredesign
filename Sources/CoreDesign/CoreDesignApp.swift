@@ -123,12 +123,12 @@ struct Workspace: View {
             Button {
                 navigate(.today)
             } label: {
-                (Text("Core").foregroundStyle(design.dark ? design.ink : .black) +
-                 Text("Design").foregroundStyle(design.wordmark))
-                    .font(design.heading(28))
-                    .tracking(-0.6)
+                BrandLogo(dark: design.dark)
             }
             .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .accessibilityLabel("CoreDesign")
+            .accessibilityHint("Вернуться к задачам на сегодня")
             Text("/").font(design.body(17)).foregroundStyle(design.muted)
             Menu {
                 Button("Сегодня") { navigate(.today) }
@@ -523,6 +523,36 @@ struct Workspace: View {
             }
         }
         .id(item.id)
+    }
+}
+
+private struct BrandLogo: View {
+    let dark: Bool
+
+    private static let lightImage = load("Logo-CoreDesign-Light")
+    private static let darkImage = load("Logo-CoreDesign-Dark")
+
+    var body: some View {
+        if let image = dark ? Self.darkImage : Self.lightImage {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(width: image.size.width, height: image.size.height)
+        } else {
+            Text("CoreDesign").font(.system(size: 25, weight: .semibold))
+        }
+    }
+
+    private static func load(_ name: String) -> NSImage? {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle.main
+        #endif
+        guard let url = bundle.url(forResource: name, withExtension: "svg", subdirectory: "Brand") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
     }
 }
 

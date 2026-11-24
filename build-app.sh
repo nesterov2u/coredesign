@@ -27,6 +27,7 @@ xcrun swiftc -O -parse-as-library \
     Sources/CoreDesign/*.swift -o "$app/Contents/MacOS/CoreDesign"
 
 ditto Sources/CoreDesign/Fonts "$app/Contents/Resources/Fonts"
+ditto Sources/CoreDesign/Brand "$app/Contents/Resources/Brand"
 ditto "$sparkle_cache/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
 cp "$sparkle_cache/LICENSE" "$app/Contents/Resources/Sparkle-LICENSE.txt"
 

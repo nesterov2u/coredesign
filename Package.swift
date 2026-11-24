@@ -11,7 +11,8 @@ let package = Package(
         .executableTarget(
             name: "CoreDesign",
             dependencies: [.product(name: "Sparkle", package: "Sparkle")],
-            exclude: ["Fonts"]
+            exclude: ["Fonts"],
+            resources: [.copy("Brand")]
         )
     ]
 )

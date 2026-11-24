@@ -14,7 +14,6 @@ struct Design {
     var positive: Color { color(0x277653, 0x95D5B5) }
     var line: Color { color(0xE6E8EF, 0x30384C) }
     var primary: Color { Color(hex: 0x344BC3) }
-    var wordmark: Color { color(0x3451F5, 0x3451F5) }
 
     private func color(_ light: UInt32, _ night: UInt32) -> Color { Color(hex: dark ? night : light) }
 
