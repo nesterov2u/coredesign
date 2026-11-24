@@ -479,29 +479,29 @@ struct Workspace: View {
     private func notes(_ item: WorkItem) -> some View {
         VStack(alignment: .leading, spacing: Space.md) {
             Text("Бриф").font(design.heading(20))
-            TextEditor(text: Binding(get: { item.brief }, set: { value in store.update(item.id) { $0.brief = value } }))
+            TextField(
+                "Бриф",
+                text: Binding(get: { item.brief }, set: { value in store.update(item.id) { $0.brief = value } }),
+                prompt: Text("Вставьте бриф или начните писать…").foregroundStyle(design.muted),
+                axis: .vertical
+            )
+                .textFieldStyle(.plain)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
                 .font(design.body())
                 .foregroundStyle(design.ink)
-                .scrollContentBackground(.hidden)
                 .focused($briefFocused)
                 .padding(Space.sm)
-                .frame(height: 144)
-                .overlay(alignment: .topLeading) {
-                    if item.brief.isEmpty {
-                        Text("Вставьте бриф или начните писать…")
-                            .font(design.body()).foregroundStyle(design.muted)
-                            .padding(.top, Space.sm + 1).padding(.leading, Space.sm + 5)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                    }
+                .frame(maxWidth: .infinity, minHeight: 144, alignment: .topLeading)
+                .background {
+                    RoundedRectangle(cornerRadius: 8).fill(design.surface)
+                        .onTapGesture { briefFocused = true }
                 }
-                .background(design.surface, in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
                         .strokeBorder(briefFocused ? design.accent : design.line)
                         .allowsHitTesting(false)
                 }
-                .accessibilityLabel("Бриф")
             Text("Материалы").font(design.heading(20))
             ForEach(item.materials) { material in
                 ChipButton(title: material.title, compact: true) {
