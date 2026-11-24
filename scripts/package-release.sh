@@ -5,6 +5,8 @@ cd "$(dirname "$0")/.."
 app="${1:?Usage: scripts/package-release.sh APP OUTPUT_DIR [DOWNLOAD_ROOT]}"
 output="${2:?Usage: scripts/package-release.sh APP OUTPUT_DIR [DOWNLOAD_ROOT]}"
 private_key="${COREDESIGN_SIGNING_KEY:-.release-signing/update.key}"
+build_cache="${COREDESIGN_BUILD_CACHE:-.build}"
+module_cache="$build_cache/modules"
 info="$app/Contents/Info.plist"
 version="$(plutil -extract CFBundleShortVersionString raw "$info")"
 build="$(plutil -extract CFBundleVersion raw "$info")"
@@ -15,13 +17,13 @@ download_root="${3:-https://github.com/nesterov2u/coredesign/releases/download/v
 [[ "$(basename "$app")" == "CoreDesign.app" ]]
 codesign --verify --deep --strict "$app"
 
-mkdir -p "$output"
+mkdir -p "$output" "$module_cache"
 archive_name="CoreDesign-$version.zip"
 archive="$output/$archive_name"
-scratch="$(mktemp -d "${TMPDIR:-/tmp}/coredesign-release.XXXXXX")"
+scratch="$(mktemp -d "$build_cache/coredesign-release.XXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
 ditto -c -k --sequesterRsrc --keepParent "$app" "$scratch/$archive_name"
-signature="$(xcrun swift -module-cache-path "${TMPDIR:-/tmp}/coredesign-modules" scripts/update-signing.swift sign "$private_key" scripts/update-public-key.txt "$scratch/$archive_name")"
+signature="$(xcrun swift -module-cache-path "$module_cache" scripts/update-signing.swift sign "$private_key" scripts/update-public-key.txt "$scratch/$archive_name")"
 size="$(stat -f %z "$scratch/$archive_name")"
 cat > "$scratch/appcast.xml" <<XML
 <?xml version="1.0" encoding="utf-8"?>

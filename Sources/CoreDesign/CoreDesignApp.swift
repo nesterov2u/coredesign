@@ -153,17 +153,13 @@ struct Workspace: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.lg) {
                 Text("Рабочее пространство").font(design.ui(13, bold: false)).foregroundStyle(design.muted)
-                HStack(spacing: Space.lg) {
-                    Text(step == .none && list == .today ? "Задачи на\nсегодня" : list.heading)
-                        .font(design.heading(32))
-                        .frame(width: step == .none && list == .today ? 314 : nil, alignment: .leading)
-                        .fixedSize(horizontal: step != .none, vertical: true)
-                    ChipButton(title: "Новая задача  ▾", style: .primary) {
-                        step = step == .none ? .templates : .none
-                    }
-                    .keyboardShortcut("n", modifiers: .command)
-                    Spacer()
+                Text(list.heading)
+                    .font(design.heading(32))
+                    .accessibilityAddTraits(.isHeader)
+                ChipButton(title: "Новая задача  ▾", style: .primary) {
+                    step = step == .none ? .templates : .none
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 listPicker
                 createForm
                 let items = statuses.flatMap { store.sorted($0) }
@@ -392,7 +388,7 @@ struct Workspace: View {
                             ForEach(group) { entry in
                                 Button { open(entry.id) } label: {
                                     Text(entry.title)
-                                        .font(design.body(entry.id == item.id ? 12 : 14, bold: entry.id == item.id))
+                                        .font(design.body(14))
                                         .foregroundStyle(entry.id == item.id ? design.accent : design.ink)
                                         .lineLimit(2)
                                         .padding(.horizontal, Space.sm)
@@ -408,7 +404,7 @@ struct Workspace: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Space.lg)
         }
-        .frame(width: 228)
+        .frame(width: 244)
         .background(design.field)
     }
 

@@ -10,7 +10,7 @@ build="${COREDESIGN_BUILD_NUMBER:-2}"
 signing_identity="${COREDESIGN_CODESIGN_IDENTITY:--}"
 default_feed="https://github.com/nesterov2u/coredesign/releases/latest/download/appcast.xml"
 feed="${COREDESIGN_FEED_URL:-$default_feed}"
-module_cache="${TMPDIR:-/tmp}/coredesign-modules"
+module_cache="${COREDESIGN_BUILD_CACHE:-.build}/modules"
 
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$build" =~ ^[1-9][0-9]*$ ]] || {
     echo "Expected a numeric version (x.y.z) and a positive build number." >&2
