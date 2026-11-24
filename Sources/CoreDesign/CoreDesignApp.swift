@@ -227,7 +227,7 @@ struct Workspace: View {
                         .labelsHidden()
                         .textFieldStyle(.plain)
                         .padding(Space.sm)
-                        .frame(maxWidth: .infinity, minHeight: 42)
+                        .frame(width: 236, height: 42)
                         .background(design.surface, in: RoundedRectangle(cornerRadius: 6))
                         .focused($titleFocused)
                         .onSubmit(createTask)
