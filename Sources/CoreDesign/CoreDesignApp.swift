@@ -65,6 +65,7 @@ struct Workspace: View {
     @ViewState private var title = ""
     @FocusState private var titleFocused: Bool
     @FocusState private var briefFocused: Bool
+    @ViewState private var briefHovered = false
     @ViewState private var importer = false
     @ViewState private var importingFor: UUID?
     @ViewState private var preview: Material?
@@ -111,6 +112,7 @@ struct Workspace: View {
                     dark.toggle()
                 } label: {
                     Image(systemName: dark ? "sun.max" : "moon")
+                        .hoverFeedback()
                 }
                 .help(dark ? "Светлая тема" : "Тёмная тема")
                 .accessibilityLabel(dark ? "Светлая тема" : "Тёмная тема")
@@ -125,19 +127,20 @@ struct Workspace: View {
             } label: {
                 BrandLogo(dark: design.dark)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressStyle())
             .focusEffectDisabled()
             .accessibilityLabel("CoreDesign")
             .accessibilityHint("Вернуться к задачам на сегодня")
             Text("/").font(design.body(17)).foregroundStyle(design.muted)
             Menu {
-                Button("Сегодня") { navigate(.today) }
-                Button("Все задачи") { navigate(.all) }
+                Button { navigate(.today) } label: { Label("Сегодня", systemImage: "calendar") }
+                Button { navigate(.all) } label: { Label("Все задачи", systemImage: "list.bullet") }
             } label: {
                 Text("1Ci").font(design.ui(15)).foregroundStyle(design.ink)
             }
             .fixedSize()
             .menuStyle(.borderlessButton)
+            .hoverFeedback()
             .help("Проект 1Ci")
             Spacer()
             Text("Figma   ·   Magnific")
@@ -157,7 +160,7 @@ struct Workspace: View {
                 Text(list.heading)
                     .font(design.heading(32))
                     .accessibilityAddTraits(.isHeader)
-                ChipButton(title: "Новая задача  ▾", style: .primary) {
+                ChipButton(title: "Новая задача", style: .primary, icon: "plus", disclosure: true) {
                     if step == .none { step = .templates }
                     else { cancelCreation() }
                 }
@@ -204,12 +207,12 @@ struct Workspace: View {
             VStack(alignment: .leading, spacing: Space.sm) {
                 Text("Из шаблона проекта").font(design.ui(13, bold: false)).foregroundStyle(design.muted)
                 ForEach(templates, id: \.self) { name in
-                    ChipButton(title: name, style: name == templates.first ? .selected : .plain) {
+                    ChipButton(title: name, style: name == templates.first ? .selected : .plain, icon: "square.on.square") {
                         prepareTask(name)
                     }
                 }
                 HStack(spacing: Space.sm) {
-                    ChipButton(title: "Пустая задача") { prepareTask(nil) }
+                    ChipButton(title: "Пустая задача", icon: "doc") { prepareTask(nil) }
                     Spacer()
                     cancelCreationButton
                 }
@@ -229,11 +232,12 @@ struct Workspace: View {
                         .padding(Space.sm)
                         .frame(width: 236, height: 42)
                         .background(design.surface, in: RoundedRectangle(cornerRadius: 6))
+                        .hoverFeedback(cornerRadius: 6)
                         .focused($titleFocused)
                         .onSubmit(createTask)
                         .onExitCommand(perform: cancelCreation)
                     cancelCreationButton
-                    ChipButton(title: "Создать задачу", style: .primary, action: createTask)
+                    ChipButton(title: "Создать задачу", style: .primary, icon: "plus", action: createTask)
                         .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -244,7 +248,7 @@ struct Workspace: View {
     }
 
     private var cancelCreationButton: some View {
-        ChipButton(title: "Отмена", action: cancelCreation)
+        ChipButton(title: "Отмена", icon: "xmark", action: cancelCreation)
             .keyboardShortcut(.cancelAction)
     }
 
@@ -290,7 +294,7 @@ struct Workspace: View {
                     .frame(maxWidth: .infinity, minHeight: 53, alignment: .leading)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressStyle())
             statusMenu(item)
                 .frame(width: 152, alignment: .leading)
             deadlineMenu(item)
@@ -332,6 +336,7 @@ struct Workspace: View {
                     .allowsHitTesting(false)
             }
         }
+        .hoverFeedback()
         .help("Изменить статус")
     }
 
@@ -404,10 +409,10 @@ struct Workspace: View {
                         } label: {
                             Image(systemName: "sidebar.left").foregroundStyle(design.muted)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressStyle())
                         .help(sidebar ? "Свернуть список задач" : "Показать список задач")
                         Button("Задачи / \(list.rawValue)") { navigate(list) }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressStyle())
                             .font(design.ui(13, bold: false))
                             .foregroundStyle(design.muted)
                     }
@@ -491,7 +496,7 @@ struct Workspace: View {
                 .font(design.body())
                 .foregroundStyle(design.ink)
                 .focused($briefFocused)
-                .padding(Space.lg)
+                .padding(Space.sm)
                 .frame(maxWidth: .infinity, minHeight: 144, alignment: .topLeading)
                 .containerRelativeFrame(.horizontal, alignment: .leading) { columnWidth, _ in
                     max(0, columnWidth - 2 * Space.xl) * 0.6
@@ -502,12 +507,13 @@ struct Workspace: View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(briefFocused ? design.accent : design.line)
+                        .strokeBorder(briefFocused ? design.accent : (briefHovered ? design.line : Color.clear))
                         .allowsHitTesting(false)
                 }
+                .onHover { briefHovered = $0 }
             Text("Материалы").font(design.heading(20))
             ForEach(item.materials) { material in
-                ChipButton(title: material.title, compact: true) {
+                ChipButton(title: material.title, compact: true, icon: "doc") {
                     if let file = store.file(for: material) {
                         if !NSWorkspace.shared.open(file) { store.issue = "Не удалось открыть файл «\(material.title)»." }
                     } else {
@@ -515,12 +521,14 @@ struct Workspace: View {
                     }
                 }
                 .contextMenu {
-                    Button("Убрать из задачи", role: .destructive) {
+                    Button(role: .destructive) {
                         store.update(item.id) { $0.materials.removeAll { $0.id == material.id } }
+                    } label: {
+                        Label("Убрать из задачи", systemImage: "trash")
                     }
                 }
             }
-            ChipButton(title: "Добавить файл", compact: true) {
+            ChipButton(title: "Добавить файл", compact: true, icon: "paperclip") {
                 importingFor = item.id
                 importer = true
             }
@@ -565,7 +573,7 @@ struct TemplateControl: View {
     let template: String
 
     var body: some View {
-        ChipButton(title: "Шаблон · \(template)", compact: true) { opened.toggle() }
+        ChipButton(title: "Шаблон · \(template)", compact: true, icon: "square.on.square") { opened.toggle() }
             .popover(isPresented: $opened, arrowEdge: .bottom) {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     Text(template).font(design.heading(17))
@@ -591,7 +599,7 @@ struct DeadlineControl: View {
                 .font(design.ui(13, bold: false))
                 .foregroundStyle(design.muted)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressStyle())
         .help("Установить срок")
         .popover(isPresented: $opened, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: Space.md) {
@@ -599,9 +607,13 @@ struct DeadlineControl: View {
                     .datePickerStyle(.graphical)
                     .labelsHidden()
                 HStack {
-                    Button("Сбросить") { onChange(nil); opened = false }.disabled(date == nil)
+                    ChipButton(title: "Сбросить", compact: true, icon: "arrow.counterclockwise") {
+                        onChange(nil); opened = false
+                    }.disabled(date == nil)
                     Spacer()
-                    Button("Готово") { if date == nil { onChange(Date()) }; opened = false }
+                    ChipButton(title: "Готово", compact: true, icon: "checkmark") {
+                        if date == nil { onChange(Date()) }; opened = false
+                    }
                 }
             }
             .frame(width: 235)
@@ -620,7 +632,7 @@ struct PreviewSheet: View {
         VStack(alignment: .leading, spacing: Space.lg) {
             Text(title).font(design.heading(24))
             Text(text).font(design.body())
-            ChipButton(title: "Закрыть", style: .selected) { dismiss() }
+            ChipButton(title: "Закрыть", style: .selected, icon: "xmark") { dismiss() }
         }
         .frame(minWidth: 360, alignment: .leading)
         .padding(Space.xl)

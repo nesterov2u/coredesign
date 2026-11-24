@@ -70,9 +70,19 @@ struct Chip: View {
     let title: String
     var style: ChipStyle = .plain
     var compact = false
+    var icon: String? = nil
+    var disclosure = false
 
     var body: some View {
-        Text(title)
+        HStack(spacing: Space.xs) {
+            if let icon { Image(systemName: icon).accessibilityHidden(true) }
+            Text(title)
+            if disclosure {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .accessibilityHidden(true)
+            }
+        }
             .font(design.ui(compact ? 12 : 13))
             .foregroundStyle(style == .primary ? .white : (style == .selected ? design.accent : design.muted))
             .padding(.horizontal, compact ? Space.sm : Space.md)
@@ -85,10 +95,14 @@ struct ChipButton: View {
     let title: String
     var style: ChipStyle = .plain
     var compact = false
+    var icon: String? = nil
+    var disclosure = false
     var action: () -> Void
 
     var body: some View {
-        Button(action: action) { Chip(title: title, style: style, compact: compact) }
+        Button(action: action) {
+            Chip(title: title, style: style, compact: compact, icon: icon, disclosure: disclosure)
+        }
             .buttonStyle(PressStyle())
     }
 }
@@ -96,6 +110,31 @@ struct ChipButton: View {
 struct PressStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.opacity(enabled ? (configuration.isPressed ? 0.72 : 1) : 0.45)
+        configuration.label
+            .hoverFeedback()
+            .opacity(enabled ? (configuration.isPressed ? 0.72 : 1) : 0.45)
+    }
+}
+
+private struct HoverFeedback: ViewModifier {
+    @Environment(\.design) private var design
+    @Environment(\.isEnabled) private var enabled
+    @ViewState private var hovered = false
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(design.ink.opacity(enabled && hovered ? 0.08 : 0))
+                    .allowsHitTesting(false)
+            }
+            .onHover { hovered = $0 }
+    }
+}
+
+extension View {
+    func hoverFeedback(cornerRadius: CGFloat = 8) -> some View {
+        modifier(HoverFeedback(cornerRadius: cornerRadius))
     }
 }

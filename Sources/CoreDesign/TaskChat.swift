@@ -65,7 +65,7 @@ struct TaskChat: View {
                             .foregroundStyle(design.muted)
                     }
                     ForEach(message.results, id: \.self) { label in
-                        ChipButton(title: label + " ↗", style: .selected, compact: true) { onResult(label) }
+                        ChipButton(title: label, style: .selected, compact: true, icon: "arrow.up.right") { onResult(label) }
                     }
                 }
                 .padding(.horizontal, isUser ? Space.md : 0)
@@ -108,7 +108,8 @@ struct TaskChat: View {
                     else { picked.insert(material) }
                 }
             }
-            ChipButton(title: picked.isEmpty ? "Готово" : "Прикрепить · \(picked.count)", style: .primary, compact: true) {
+            ChipButton(title: picked.isEmpty ? "Готово" : "Прикрепить · \(picked.count)", style: .primary, compact: true,
+                       icon: picked.isEmpty ? "checkmark" : "paperclip") {
                 attached = picked.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
                 panel = .history
             }
@@ -135,8 +136,8 @@ struct TaskChat: View {
             Text("Magnific · 2 варианта\nДемонстрационный запуск.")
                 .font(design.ui(13, bold: false)).foregroundStyle(design.muted)
             HStack(spacing: Space.sm) {
-                ChipButton(title: "Отмена", compact: true) { resolveGeneration(approved: false) }
-                ChipButton(title: "Запустить", style: .primary, compact: true) { resolveGeneration(approved: true) }
+                ChipButton(title: "Отмена", compact: true, icon: "xmark") { resolveGeneration(approved: false) }
+                ChipButton(title: "Запустить", style: .primary, compact: true, icon: "play.fill") { resolveGeneration(approved: true) }
             }
         }
     }
@@ -152,19 +153,20 @@ struct TaskChat: View {
                 .textFieldStyle(.plain)
                 .font(design.body())
                 .lineLimit(1...4)
+                .hoverFeedback()
                 .disabled(item.pendingGeneration)
             HStack(spacing: Space.xs) {
-                ChipButton(title: "+ Контекст", compact: true) {
+                ChipButton(title: "Контекст", compact: true, icon: "plus") {
                     if panel == .context { panel = .history }
                     else {
                         picked = Set(attached)
                         panel = .context
                     }
                 }
-                ChipButton(title: (service == .automatic ? "Авто" : service.rawValue) + " ▾", compact: true) {
+                ChipButton(title: service == .automatic ? "Авто" : service.rawValue, compact: true, disclosure: true) {
                     panel = panel == .services ? .history : .services
                 }
-                ChipButton(title: "Отправить", style: .primary, compact: true, action: send)
+                ChipButton(title: "Отправить", style: .primary, compact: true, icon: "paperplane", action: send)
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || item.pendingGeneration)
                     .keyboardShortcut(.return, modifiers: .command)
             }
