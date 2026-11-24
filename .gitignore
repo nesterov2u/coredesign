@@ -1,0 +1,6 @@
+.build/
+*.app/
+*.zip
+.release-signing/
+.DS_Store
+CoreDesign-decisions.md
