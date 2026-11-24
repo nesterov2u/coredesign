@@ -270,7 +270,7 @@ struct Workspace: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            statusMenu(item, chip: false)
+            statusMenu(item)
                 .frame(width: 152, alignment: .leading)
             deadlineMenu(item)
                 .frame(width: 100, alignment: .leading)
@@ -278,7 +278,7 @@ struct Workspace: View {
         .padding(.horizontal, Space.lg)
     }
 
-    private func statusMenu(_ item: WorkItem, chip: Bool) -> some View {
+    private func statusMenu(_ item: WorkItem, asField: Bool = false) -> some View {
         Menu {
             ForEach(WorkStatus.allCases) { status in
                 Button {
@@ -289,8 +289,10 @@ struct Workspace: View {
                 }
             }
         } label: {
-            if chip {
-                Chip(title: item.status.rawValue, style: .selected, compact: true)
+            if asField {
+                Text(item.status.rawValue)
+                    .font(design.ui(12))
+                    .foregroundStyle(design.statusInk)
             } else {
                 Text(item.status.rawValue)
                     .font(design.ui(13, bold: false))
@@ -298,9 +300,17 @@ struct Workspace: View {
             }
         }
         .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .menuIndicator(asField ? .visible : .hidden)
         .fixedSize()
-        .background(chip ? design.tint : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, asField ? Space.md : 0)
+        .padding(.vertical, asField ? Space.sm : 0)
+        .background(asField ? design.surface : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            if asField {
+                RoundedRectangle(cornerRadius: 8).strokeBorder(design.line)
+                    .allowsHitTesting(false)
+            }
+        }
         .help("Изменить статус")
     }
 
@@ -388,7 +398,7 @@ struct Workspace: View {
                     }
                     Text(item.title).font(design.heading(28)).fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: Space.md) {
-                        statusMenu(item, chip: true)
+                        statusMenu(item, asField: true)
                         if let template = item.template {
                             TemplateControl(template: template)
                         }
