@@ -23,14 +23,19 @@ struct CoreDesignApp: App {
                     .disabled(!updates.canCheck)
             }
         }
+        Settings {
+            CoreDesignSettings(updates: updates)
+        }
     }
 }
 
 @MainActor
 private final class AppUpdates: ObservableObject {
     @Published private(set) var canCheck = false
+    @Published private(set) var automaticallyChecks = true
     private let controller: SPUStandardUpdaterController
     private var observation: NSKeyValueObservation?
+    private var automaticCheckObservation: NSKeyValueObservation?
 
     init() {
         controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
@@ -38,11 +43,51 @@ private final class AppUpdates: ObservableObject {
             let available = updater.canCheckForUpdates
             Task { @MainActor in self?.canCheck = available }
         }
+        automaticCheckObservation = controller.updater.observe(\.automaticallyChecksForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
+            let enabled = updater.automaticallyChecksForUpdates
+            Task { @MainActor in self?.automaticallyChecks = enabled }
+        }
     }
 
     func check() {
         guard canCheck else { return }
         controller.checkForUpdates(nil)
+    }
+
+    func setAutomaticChecks(_ enabled: Bool) {
+        controller.updater.automaticallyChecksForUpdates = enabled
+    }
+}
+
+private struct CoreDesignSettings: View {
+    @AppStorage("darkMode") private var dark = false
+    @ObservedObject var updates: AppUpdates
+
+    var body: some View {
+        Form {
+            Section("Оформление") {
+                Picker("Тема", selection: $dark) {
+                    Text("Светлая").tag(false)
+                    Text("Тёмная").tag(true)
+                }
+            }
+            Section("Обновления") {
+                Toggle("Проверять автоматически", isOn: Binding(
+                    get: { updates.automaticallyChecks }, set: updates.setAutomaticChecks
+                ))
+                LabeledContent("Версия", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")
+                Button("Проверить обновления…", action: updates.check)
+                    .disabled(!updates.canCheck)
+            }
+            Section("Подключения") {
+                LabeledContent("Figma", value: "Демонстрационный режим")
+                LabeledContent("Magnific", value: "Демонстрационный режим")
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 460)
+        .fixedSize(horizontal: false, vertical: true)
+        .preferredColorScheme(dark ? .dark : .light)
     }
 }
 
@@ -92,7 +137,7 @@ struct Workspace: View {
         .fileImporter(isPresented: $importer, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard let id = importingFor else { return }
             switch result {
-            case .success(let files): store.attach(files, to: id)
+            case .success(let files): _ = store.attach(files, to: id)
             case .failure(let error): store.issue = error.localizedDescription
             }
         }
@@ -106,6 +151,13 @@ struct Workspace: View {
             Text(store.issue ?? "")
         }
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                SettingsLink {
+                    Image(systemName: "gearshape")
+                }
+                .help("Настройки")
+                .accessibilityLabel("Настройки")
+            }
             ToolbarItem(placement: .automatic) {
                 Button {
                     dark.toggle()
@@ -349,7 +401,7 @@ struct Workspace: View {
 
     private func task(_ item: WorkItem) -> some View {
         HStack(alignment: .top, spacing: 0) {
-            taskSidebar(item)
+            if item.tab == .notes { taskSidebar(item) }
             VStack(spacing: 0) {
                 taskToolbar(item)
                 taskBody(item)
@@ -404,39 +456,44 @@ struct Workspace: View {
 
     private func taskBody(_ item: WorkItem) -> some View {
         HStack(alignment: .top, spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Space.lg) {
-                    ChipButton(title: "Назад", compact: true, icon: "arrow.left") {
-                        navigate(list)
-                    }
-                    .help("Вернуться к списку задач")
-                    Text(item.title).font(design.heading(28)).fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: Space.md) {
-                        statusMenu(item, asField: true)
-                        if let template = item.template {
-                            TemplateControl(template: template)
+            switch item.tab {
+            case .notes:
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Space.lg) {
+                        ChipButton(title: "Назад", compact: true, icon: "arrow.left") {
+                            navigate(list)
                         }
-                    }
-                    switch item.tab {
-                    case .notes:
+                        .help("Вернуться к списку задач")
+                        Text(item.title).font(design.heading(28)).fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: Space.md) {
+                            statusMenu(item, asField: true)
+                            if let template = item.template {
+                                TemplateControl(template: template)
+                            }
+                        }
                         notes(item)
-                    case .canvas:
-                        VStack(alignment: .leading, spacing: Space.sm) {
-                            Text("Холст").font(design.heading(20))
-                            Text("Редактор холста пока недоступен в тестовой сборке.")
-                                .font(design.body()).foregroundStyle(design.muted)
+                    }
+                    .padding(Space.xl)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            case .canvas:
+                TaskCanvas(store: store, item: item, back: { navigate(list) }) {
+                    Picker("Список задач", selection: $list) {
+                        ForEach(TaskList.allCases, id: \.self) { option in
+                            Text(option.rawValue).tag(option)
                         }
                     }
+                    .labelsHidden()
+                    taskGroups(item)
                 }
-                .padding(Space.xl)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .id(item.id)
             }
             if item.chatOpen {
                 TaskChat(store: store, item: item, onResult: { label in
                     preview = Material(title: label, preview: "Демонстрационный результат для задачи «\(item.title)».")
                 })
                 .id(item.id)
-                .frame(width: 400)
+                .frame(width: item.tab == .canvas ? 320 : 400)
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -447,32 +504,36 @@ struct Workspace: View {
             VStack(alignment: .leading, spacing: Space.md) {
                 Text("Задачи").font(design.heading(20))
                 listPicker
-                ForEach(statuses) { status in
-                    let group = store.sorted(status)
-                    if !group.isEmpty {
-                        Text(status.rawValue).font(design.ui(13)).foregroundStyle(design.muted)
-                        VStack(alignment: .leading, spacing: Space.xxs) {
-                            ForEach(group) { entry in
-                                Button { open(entry.id) } label: {
-                                    Text(entry.title)
-                                        .font(design.body(14))
-                                        .foregroundStyle(entry.id == item.id ? design.accent : design.ink)
-                                        .lineLimit(2)
-                                        .padding(.horizontal, Space.sm)
-                                        .frame(minHeight: 33, alignment: .leading)
-                                        .background(entry.id == item.id ? design.tint : Color.clear, in: RoundedRectangle(cornerRadius: 7))
-                                }
-                                .buttonStyle(PressStyle())
-                            }
-                        }
-                    }
-                }
+                taskGroups(item)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Space.lg)
         }
         .frame(width: 244)
         .background(design.field)
+    }
+
+    private func taskGroups(_ item: WorkItem) -> some View {
+        ForEach(statuses) { status in
+            let group = store.sorted(status)
+            if !group.isEmpty {
+                Text(status.rawValue).font(design.ui(13)).foregroundStyle(design.muted)
+                VStack(alignment: .leading, spacing: Space.xxs) {
+                    ForEach(group) { entry in
+                        Button { open(entry.id) } label: {
+                            Text(entry.title)
+                                .font(design.body(14))
+                                .foregroundStyle(entry.id == item.id ? design.accent : design.ink)
+                                .lineLimit(2)
+                                .padding(.horizontal, Space.sm)
+                                .frame(minHeight: 33, alignment: .leading)
+                                .background(entry.id == item.id ? design.tint : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                        }
+                        .buttonStyle(PressStyle())
+                    }
+                }
+            }
+        }
     }
 
     private func notes(_ item: WorkItem) -> some View {

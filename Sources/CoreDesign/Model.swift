@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ImageIO
 
 enum WorkStatus: String, Codable, CaseIterable, Identifiable {
     case active = "В работе"
@@ -55,6 +56,7 @@ struct WorkItem: Codable, Identifiable {
     var chatOpen = false
     var messages: [ChatMessage] = []
     var pendingGeneration = false
+    var canvasFrames: [CanvasFrame]?
 
     static var demo: [WorkItem] {
         let calendar = Calendar.current
@@ -115,26 +117,50 @@ final class ProjectStore {
         _ = commit(revised)
     }
 
-    func attach(_ sources: [URL], to id: UUID) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    func attach(_ sources: [URL], to id: UUID, canvasFrame frameID: UUID? = nil) -> [UUID] {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return [] }
         var revised = items
+        let frames = revised[index].canvasFrames ?? []
+        let frameIndex = frameID.flatMap { id in frames.firstIndex { $0.id == id } }
+        guard frameID == nil || frameIndex != nil else { return [] }
         var copied: [URL] = []
+        var layerIDs: [UUID] = []
         do {
             try FileManager.default.createDirectory(at: attachments, withIntermediateDirectories: true)
             for source in sources {
                 let accessing = source.startAccessingSecurityScopedResource()
                 defer { if accessing { source.stopAccessingSecurityScopedResource() } }
+                let geometry = try frameID.map { _ in try imageSize(at: source) }
                 let name = UUID().uuidString + "-" + source.lastPathComponent
                 let destination = attachments.appending(path: name)
                 try FileManager.default.copyItem(at: source, to: destination)
                 copied.append(destination)
-                revised[index].materials.append(Material(title: source.lastPathComponent, storedName: name))
+                let material = Material(title: source.lastPathComponent, storedName: name)
+                revised[index].materials.append(material)
+                if let frameIndex, let geometry {
+                    let layer = frames[frameIndex].imageLayer(material: material, size: geometry)
+                    revised[index].canvasFrames?[frameIndex].layers.append(layer)
+                    layerIDs.append(layer.id)
+                }
             }
-            if commit(revised) { return }
+            if commit(revised) { return layerIDs }
         } catch {
             issue = "Не удалось добавить материалы. \(error.localizedDescription)"
         }
         for file in copied { try? FileManager.default.removeItem(at: file) }
+        return []
+    }
+
+    private func imageSize(at url: URL) throws -> CGSize {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+              let width = properties[kCGImagePropertyPixelWidth as String] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight as String] as? Int,
+              width > 0, height > 0 else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let orientation = properties[kCGImagePropertyOrientation as String] as? Int ?? 1
+        return (5...8).contains(orientation) ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
     }
 
     func file(for material: Material) -> URL? {
