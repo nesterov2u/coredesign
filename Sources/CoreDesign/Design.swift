@@ -176,6 +176,7 @@ struct DesignDropdown<Trigger: View, Options: View>: View {
 
 struct DropdownRow: View {
     @Environment(\.design) private var design
+    @FocusState private var keyboardFocused: Bool
     let title: String
     var subtitle: String?
     var icon: String?
@@ -202,15 +203,20 @@ struct DropdownRow: View {
                         .accessibilityHidden(true)
                 }
             }
-            .font(design.ui(12, bold: selected))
+            .font(design.ui(bold: selected))
             .foregroundStyle(selected ? design.accent : design.ink)
             .padding(.horizontal, Space.sm)
             .padding(.vertical, Space.xxs)
             .frame(minHeight: 28)
-            .background(selected ? design.tint : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .background {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(selected ? design.tint : (keyboardFocused ? design.field : Color.clear))
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(PressStyle())
+        .focused($keyboardFocused)
+        .focusEffectDisabled()
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
