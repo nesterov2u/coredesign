@@ -8,8 +8,8 @@ struct Design {
     var field: Color { color(0xF4F5FA, 0x22283A) }
     var surface: Color { color(0xFFFFFF, 0x202733) }
     var canvas: Color { color(0xFFFFFF, 0x151925) }
-    var accent: Color { color(0x2343E5, 0xA6B5FF) }
-    var tint: Color { color(0xDBEEFF, 0x292F54) }
+    var accent: Color { color(0x0042D0, 0xA6B5FF) }
+    var tint: Color { color(0xDFE9FF, 0x292F54) }
     var statusInk: Color { color(0x344BC3, 0xA6B5FF) }
     var positive: Color { color(0x277653, 0x95D5B5) }
     var line: Color { color(0xE6E8EF, 0x30384C) }
