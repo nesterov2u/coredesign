@@ -9,6 +9,13 @@ enum WorkStatus: String, Codable, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+struct FrameSizePreset: Codable, Identifiable {
+    var id = UUID()
+    let name: String
+    let width: Int
+    let height: Int
+}
+
 enum WorkTab: String, Codable, CaseIterable {
     case notes = "Заметки"
     case canvas = "Холст"
@@ -81,8 +88,10 @@ struct WorkItem: Codable, Identifiable {
 final class ProjectStore {
     private let directory: URL
     private var loadFailed = false
+    private var presetsLoadFailed = false
     var issue: String?
     private(set) var items: [WorkItem] = []
+    private(set) var frameSizePresets: [FrameSizePreset] = []
     let projectMaterials = [
         Material(title: "Брендбук.pdf", preview: "Демонстрационный материал проекта 1Ci."),
         Material(title: "Логотип.svg", preview: "Демонстрационный материал проекта 1Ci.")
@@ -98,6 +107,32 @@ final class ProjectStore {
         } catch {
             loadFailed = true
             issue = "Не удалось открыть локальные данные. Перезапустите CoreDesign после восстановления файла tasks.json."
+        }
+        do {
+            let data = try Data(contentsOf: frameSizePresetsFile)
+            frameSizePresets = try JSONDecoder().decode([FrameSizePreset].self, from: data)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            // Projects created before frame size presets start with an empty list.
+        } catch {
+            presetsLoadFailed = true
+            if issue == nil { issue = "Не удалось открыть шаблоны размеров фреймов." }
+        }
+    }
+
+    func saveFrameSizePreset(_ preset: FrameSizePreset) -> Bool {
+        guard !presetsLoadFailed, !loadFailed else {
+            issue = "Локальные данные недоступны. Шаблон размера не сохранён."
+            return false
+        }
+        let revised = frameSizePresets + [preset]
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try JSONEncoder().encode(revised).write(to: frameSizePresetsFile, options: .atomic)
+            frameSizePresets = revised
+            return true
+        } catch {
+            issue = "Не удалось сохранить шаблон размера. \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -168,6 +203,7 @@ final class ProjectStore {
     }
 
     private var attachments: URL { directory.appending(path: "Attachments") }
+    private var frameSizePresetsFile: URL { directory.appending(path: "frame-size-presets.json") }
 
     private func commit(_ revised: [WorkItem]) -> Bool {
         guard !loadFailed else {

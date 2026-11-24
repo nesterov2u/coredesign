@@ -138,3 +138,79 @@ extension View {
         modifier(HoverFeedback(cornerRadius: cornerRadius))
     }
 }
+
+struct DesignDropdown<Trigger: View, Options: View>: View {
+    @Environment(\.design) private var design
+    @ViewState private var opened = false
+    var width: CGFloat = 210
+    var showsChevron = true
+    @ViewBuilder var options: (_ close: @escaping () -> Void) -> Options
+    @ViewBuilder var trigger: () -> Trigger
+
+    var body: some View {
+        Button { opened.toggle() } label: {
+            HStack(spacing: Space.xs) {
+                trigger()
+                if showsChevron {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(design.muted)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressStyle())
+        .popover(isPresented: $opened, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                options { opened = false }
+            }
+            .padding(Space.xs)
+            .frame(width: width)
+            .background(design.surface)
+            .environment(\.design, design)
+            .onExitCommand { opened = false }
+        }
+    }
+}
+
+struct DropdownRow: View {
+    @Environment(\.design) private var design
+    let title: String
+    var subtitle: String?
+    var icon: String?
+    var selected = false
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Space.sm) {
+                if let icon {
+                    Image(systemName: icon).frame(width: 15).accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).lineLimit(2)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(design.ui(11, bold: false))
+                            .foregroundStyle(design.muted)
+                    }
+                }
+                Spacer(minLength: 0)
+                if selected {
+                    Image(systemName: "checkmark").font(.system(size: 10, weight: .semibold))
+                        .accessibilityHidden(true)
+                }
+            }
+            .font(design.ui(12, bold: selected))
+            .foregroundStyle(selected ? design.accent : design.ink)
+            .padding(.horizontal, Space.sm)
+            .padding(.vertical, Space.xxs)
+            .frame(minHeight: 28)
+            .background(selected ? design.tint : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressStyle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}

@@ -66,9 +66,15 @@ private struct CoreDesignSettings: View {
     var body: some View {
         Form {
             Section("Оформление") {
-                Picker("Тема", selection: $dark) {
-                    Text("Светлая").tag(false)
-                    Text("Тёмная").tag(true)
+                LabeledContent("Тема") {
+                    DesignDropdown(width: 150) { close in
+                        DropdownRow(title: "Светлая", icon: "sun.max", selected: !dark) { close(); dark = false }
+                        DropdownRow(title: "Тёмная", icon: "moon", selected: dark) { close(); dark = true }
+                    } trigger: {
+                        Text(dark ? "Тёмная" : "Светлая").padding(Space.xxs)
+                    }
+                    .accessibilityLabel("Тема")
+                    .accessibilityValue(dark ? "Тёмная" : "Светлая")
                 }
             }
             Section("Обновления") {
@@ -85,6 +91,7 @@ private struct CoreDesignSettings: View {
             }
         }
         .formStyle(.grouped)
+        .environment(\.design, Design(dark: dark))
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
         .preferredColorScheme(dark ? .dark : .light)
@@ -183,15 +190,13 @@ struct Workspace: View {
             .accessibilityLabel("CoreDesign")
             .accessibilityHint("Вернуться к задачам на сегодня")
             Text("/").font(design.body(17)).foregroundStyle(design.muted)
-            Menu {
-                Button { navigate(.today) } label: { Label("Сегодня", systemImage: "calendar") }
-                Button { navigate(.all) } label: { Label("Все задачи", systemImage: "list.bullet") }
-            } label: {
+            DesignDropdown(width: 170) { close in
+                DropdownRow(title: "Сегодня", icon: "calendar", selected: list == .today) { close(); navigate(.today) }
+                DropdownRow(title: "Все задачи", icon: "list.bullet", selected: list == .all) { close(); navigate(.all) }
+            } trigger: {
                 Text("1Ci").font(design.ui(15)).foregroundStyle(design.ink)
             }
             .fixedSize()
-            .menuStyle(.borderlessButton)
-            .hoverFeedback()
             .help("Проект 1Ci")
             Spacer()
             Text("Figma   ·   Magnific")
@@ -359,16 +364,14 @@ struct Workspace: View {
     }
 
     private func statusMenu(_ item: WorkItem, asField: Bool = false) -> some View {
-        Menu {
+        DesignDropdown(width: 180, showsChevron: asField) { close in
             ForEach(WorkStatus.allCases) { status in
-                Button {
+                DropdownRow(title: status.rawValue, selected: item.status == status) {
+                    close()
                     store.update(item.id) { $0.status = status }
-                } label: {
-                    if item.status == status { Label(status.rawValue, systemImage: "checkmark") }
-                    else { Text(status.rawValue) }
                 }
             }
-        } label: {
+        } trigger: {
             if asField {
                 Text(item.status.rawValue)
                     .font(design.ui(12))
@@ -379,8 +382,6 @@ struct Workspace: View {
                     .foregroundStyle(item.status == .finished ? design.positive : design.accent)
             }
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(asField ? .visible : .hidden)
         .fixedSize()
         .padding(.horizontal, asField ? Space.md : 0)
         .padding(.vertical, asField ? Space.sm : 0)
@@ -391,7 +392,6 @@ struct Workspace: View {
                     .allowsHitTesting(false)
             }
         }
-        .hoverFeedback()
         .help("Изменить статус")
     }
 

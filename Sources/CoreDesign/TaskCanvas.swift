@@ -56,6 +56,8 @@ struct TaskCanvas: View {
     @ViewState private var importFrameID: UUID?
     @ViewState private var importing = false
     @ViewState private var removingFrame = false
+    @ViewState private var presetDraft: FrameSizePreset?
+    @ViewState private var renamingLayer: LayerRename?
 
     private var frames: [CanvasFrame] { item.canvasFrames ?? [] }
     private var frame: CanvasFrame? { frames.first { $0.id == frameID } ?? frames.first }
@@ -72,6 +74,16 @@ struct TaskCanvas: View {
             }
         }
         .background(design.surface)
+        .sheet(item: $presetDraft) { draft in
+            FramePresetForm(draft: draft, store: store)
+                .environment(\.design, design)
+        }
+        .sheet(item: $renamingLayer) { draft in
+            LayerRenameForm(title: draft.name) { name in
+                finishRename(draft.id, in: draft.frameID, name: name)
+            }
+            .environment(\.design, design)
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
             guard let importFrameID else { return }
             switch result {
@@ -126,17 +138,7 @@ struct TaskCanvas: View {
                         }
                         if !collapsed.contains(entry.id) {
                             ForEach(entry.layers.reversed()) { child in
-                                entryButton(child.name, icon: child.icon, selected: layerID == child.id) {
-                                    selectLayer(child.id, in: entry.id)
-                                }
-                                .padding(.leading, 22)
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        removeLayer(child.id, in: entry.id)
-                                    } label: {
-                                        Label("Удалить слой", systemImage: "trash")
-                                    }
-                                }
+                                layerRow(child, in: entry.id).padding(.leading, 22)
                             }
                         }
                     }
@@ -146,6 +148,40 @@ struct TaskCanvas: View {
         }
         .frame(width: 188)
         .background(design.surface)
+    }
+
+    private func layerRow(_ child: CanvasLayer, in frameID: UUID) -> some View {
+        entryButton(child.name, icon: child.icon, selected: layerID == child.id) {
+            selectLayer(child.id, in: frameID)
+        }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { beginRename(child, in: frameID) })
+        .contextMenu {
+            Button {
+                beginRename(child, in: frameID)
+            } label: {
+                Label("Переименовать", systemImage: "pencil")
+            }
+            Button(role: .destructive) {
+                removeLayer(child.id, in: frameID)
+            } label: {
+                Label("Удалить слой", systemImage: "trash")
+            }
+        }
+    }
+
+    private func beginRename(_ child: CanvasLayer, in frameID: UUID) {
+        self.frameID = frameID
+        layerID = child.id
+        boardFocused = false
+        renamingLayer = LayerRename(id: child.id, frameID: frameID, name: child.name)
+    }
+
+    private func finishRename(_ id: UUID, in frameID: UUID, name: String) {
+        editFrame(frameID) { frame in
+            guard let index = frame.layers.firstIndex(where: { $0.id == id }),
+                  frame.layers[index].name != name else { return }
+            frame.layers[index].name = name
+        }
     }
 
     private func entryButton(_ name: String, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -230,23 +266,21 @@ struct TaskCanvas: View {
 
     private func zoomMenu(scale: CGFloat) -> some View {
         let percentage = max(1, Int((scale * 100).rounded()))
-        return Menu {
-            Button("Увеличить") { zoom = boundedZoom(scale * 1.25) }
-            Button("Уменьшить") { zoom = boundedZoom(scale / 1.25) }
+        return DesignDropdown(width: 164) { close in
+            DropdownRow(title: "Увеличить", icon: "plus.magnifyingglass") { close(); zoom = boundedZoom(scale * 1.25) }
+            DropdownRow(title: "Уменьшить", icon: "minus.magnifyingglass") { close(); zoom = boundedZoom(scale / 1.25) }
             Divider()
-            Button("Вписать фрейм") { zoom = nil }
+            DropdownRow(title: "Вписать фрейм", selected: zoom == nil) { close(); zoom = nil }
             ForEach([25, 50, 100, 200, 400], id: \.self) { value in
-                Button("\(value)%") { zoom = CGFloat(value) / 100 }
+                DropdownRow(title: "\(value)%", selected: zoom == CGFloat(value) / 100) { close(); zoom = CGFloat(value) / 100 }
             }
-        } label: {
+        } trigger: {
             Text("\(percentage)%").monospacedDigit().font(design.ui(12))
-                .padding(.leading, Space.xs)
+                .padding(.leading, Space.xxs)
         }
-        .menuStyle(.borderlessButton)
         .fixedSize()
-        .padding(Space.xxs)
+        .padding(Space.xs)
         .background(design.surface, in: RoundedRectangle(cornerRadius: 7))
-        .hoverFeedback(cornerRadius: 7)
         .accessibilityLabel("Масштаб холста")
         .accessibilityValue("\(percentage)%")
         .help("Масштаб: щипок или ⌘ + свайп двумя пальцами")
@@ -336,13 +370,7 @@ struct TaskCanvas: View {
                         number("Ширина", mark: "Ш", value: frameValue(frame, \.width), range: 1...8192)
                         number("Высота", mark: "В", value: frameValue(frame, \.height), range: 1...8192)
                     }
-                    Menu("Формат фрейма") {
-                        ForEach(CanvasFrame.sizes, id: \.0) { name, width, height in
-                            Button("\(name) · \(width) × \(height)") {
-                                editFrame(frame.id) { $0.width = width; $0.height = height }
-                            }
-                        }
-                    }
+                    frameSizeMenu(frame)
                     Divider()
                     sectionTitle("Заливка")
                     ColorPicker("Фон фрейма", selection: color(frameValue(frame, \.fill)), supportsOpacity: false)
@@ -357,6 +385,58 @@ struct TaskCanvas: View {
         }
         .frame(width: 194)
         .background(design.surface)
+    }
+
+    private func frameSizeMenu(_ frame: CanvasFrame) -> some View {
+        let saved = store.frameSizePresets
+        return DesignDropdown(width: 246) { close in
+            ForEach(CanvasFrame.sizes, id: \.0) { name, width, height in
+                DropdownRow(title: name, subtitle: sizeLabel(width, height),
+                            selected: frame.width == width && frame.height == height) {
+                    close()
+                    applySize(width, height, to: frame.id)
+                }
+            }
+            if !saved.isEmpty {
+                Divider()
+                Text("Шаблоны проекта").font(design.ui(11)).foregroundStyle(design.muted)
+                    .padding(.horizontal, Space.sm)
+                    .padding(.vertical, Space.xxs)
+                ScrollView {
+                    VStack(spacing: 2) {
+                        ForEach(saved) { preset in
+                            DropdownRow(title: preset.name, subtitle: sizeLabel(preset.width, preset.height),
+                                        selected: frame.width == preset.width && frame.height == preset.height) {
+                                close()
+                                applySize(preset.width, preset.height, to: frame.id)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 190)
+                .fixedSize(horizontal: false, vertical: saved.count < 4)
+            }
+            Divider()
+            DropdownRow(title: "Сохранить текущий размер…", icon: "bookmark") {
+                close()
+                let current = self.frame ?? frame
+                presetDraft = FrameSizePreset(name: sizeLabel(current.width, current.height),
+                                             width: current.width, height: current.height)
+            }
+        } trigger: {
+            Text("Формат фрейма").font(design.ui(12))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, Space.sm)
+        .frame(height: 30)
+        .background(design.field, in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func applySize(_ width: Int, _ height: Int, to id: UUID) {
+        editFrame(id) {
+            $0.width = width
+            $0.height = height
+        }
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -469,6 +549,99 @@ struct TaskCanvas: View {
         }
     }
 }
+
+private struct LayerRename: Identifiable {
+    let id: UUID
+    let frameID: UUID
+    let name: String
+}
+
+private struct LayerRenameForm: View {
+    @Environment(\.design) private var design
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var nameFocused: Bool
+    let title: String
+    let save: (String) -> Void
+    @ViewState private var name = ""
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            Text("Переименовать слой").font(design.heading(17))
+            TextField("Название слоя", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($nameFocused)
+                .onSubmit(accept)
+            HStack {
+                Spacer()
+                ChipButton(title: "Отмена", compact: true) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                ChipButton(title: "Сохранить", style: .primary, compact: true, action: accept)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(trimmedName.isEmpty)
+            }
+        }
+        .padding(Space.xl)
+        .frame(width: 340)
+        .background(design.surface)
+        .onAppear { name = title }
+        .defaultFocus($nameFocused, true)
+    }
+
+    private func accept() {
+        guard !trimmedName.isEmpty else { return }
+        save(trimmedName)
+        dismiss()
+    }
+}
+
+private struct FramePresetForm: View {
+    @Environment(\.design) private var design
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var nameFocused: Bool
+    let draft: FrameSizePreset
+    let store: ProjectStore
+    @ViewState private var name = ""
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var duplicate: Bool {
+        store.frameSizePresets.contains { $0.name.localizedCaseInsensitiveCompare(trimmedName) == .orderedSame }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            Text("Шаблон размера").font(design.heading(17))
+            Text("\(sizeLabel(draft.width, draft.height)) px · Доступен в задачах этого проекта")
+                .font(design.body(12)).foregroundStyle(design.muted)
+            TextField("Название шаблона", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($nameFocused)
+            if duplicate {
+                Text("Шаблон с таким названием уже есть.")
+                    .font(design.body(12)).foregroundStyle(design.muted)
+            }
+            HStack {
+                Spacer()
+                ChipButton(title: "Отмена", compact: true) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                ChipButton(title: "Сохранить", style: .primary, compact: true, icon: "bookmark") {
+                    if store.saveFrameSizePreset(FrameSizePreset(name: trimmedName, width: draft.width, height: draft.height)) {
+                        dismiss()
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(trimmedName.isEmpty || duplicate)
+            }
+        }
+        .padding(Space.xl)
+        .frame(width: 365)
+        .background(design.surface)
+        .onAppear { name = draft.name; nameFocused = true }
+    }
+}
+
+private func sizeLabel(_ width: Int, _ height: Int) -> String { "\(width.formatted()) × \(height.formatted())" }
 
 private struct CanvasScrollZoom: NSViewRepresentable {
     var zoom: (CGFloat) -> Void
