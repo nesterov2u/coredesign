@@ -64,6 +64,7 @@ struct Workspace: View {
     @ViewState private var template: String?
     @ViewState private var title = ""
     @FocusState private var titleFocused: Bool
+    @FocusState private var briefFocused: Bool
     @ViewState private var importer = false
     @ViewState private var importingFor: UUID?
     @ViewState private var preview: Material?
@@ -316,6 +317,60 @@ struct Workspace: View {
     private func taskLayout(_ item: WorkItem, chatGutter: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 0) {
             if sidebar { taskSidebar(item) }
+            VStack(spacing: 0) {
+                taskToolbar(item)
+                taskBody(item, chatGutter: chatGutter)
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private func taskToolbar(_ item: WorkItem) -> some View {
+        HStack(spacing: Space.lg) {
+            HStack(spacing: Space.lg) {
+                ForEach(WorkTab.allCases, id: \.self) { tab in
+                    let selected = item.tab == tab
+                    Button {
+                        store.update(item.id) { $0.tab = tab }
+                    } label: {
+                        Text(tab.rawValue)
+                            .font(design.ui())
+                            .foregroundStyle(selected ? design.accent : design.muted)
+                            .padding(.horizontal, Space.xxs)
+                            .frame(minHeight: 52)
+                            .contentShape(Rectangle())
+                            .overlay(alignment: .bottom) {
+                                if selected { design.accent.frame(height: 2) }
+                            }
+                    }
+                    .buttonStyle(PressStyle())
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Вкладки задачи")
+            Spacer()
+            Button {
+                store.update(item.id) { $0.chatOpen.toggle() }
+            } label: {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(item.chatOpen ? design.accent : design.muted)
+                    .frame(width: 34, height: 34)
+                    .background(item.chatOpen ? design.tint : design.field, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(PressStyle())
+            .accessibilityLabel("ИИ-чат")
+            .accessibilityValue(item.chatOpen ? "Открыт" : "Закрыт")
+            .help(item.chatOpen ? "Скрыть ИИ-чат" : "Открыть ИИ-чат")
+        }
+        .padding(.horizontal, Space.xl)
+        .background(alignment: .bottom) { design.line.frame(height: 1) }
+        .background(design.canvas)
+    }
+
+    private func taskBody(_ item: WorkItem, chatGutter: CGFloat) -> some View {
+        HStack(alignment: .top, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.lg) {
                     HStack(spacing: Space.sm) {
@@ -336,16 +391,6 @@ struct Workspace: View {
                         statusMenu(item, chip: true)
                         if let template = item.template {
                             TemplateControl(template: template)
-                        }
-                    }
-                    HStack(spacing: Space.sm) {
-                        ForEach(WorkTab.allCases, id: \.self) { tab in
-                            ChipButton(title: tab.rawValue, style: item.tab == tab ? .selected : .plain) {
-                                store.update(item.id) { $0.tab = tab }
-                            }
-                        }
-                        ChipButton(title: "ИИ-чат", style: item.chatOpen ? .selected : .plain) {
-                            store.update(item.id) { $0.chatOpen.toggle() }
                         }
                     }
                     switch item.tab {
@@ -411,20 +456,29 @@ struct Workspace: View {
     private func notes(_ item: WorkItem) -> some View {
         VStack(alignment: .leading, spacing: Space.md) {
             Text("Бриф").font(design.heading(20))
-            ZStack(alignment: .topLeading) {
-                if item.brief.isEmpty {
-                    Text("Вставьте бриф или начните писать…")
-                        .font(design.body()).foregroundStyle(design.muted)
-                        .padding(.top, 2).padding(.leading, 5).allowsHitTesting(false)
+            TextEditor(text: Binding(get: { item.brief }, set: { value in store.update(item.id) { $0.brief = value } }))
+                .font(design.body())
+                .foregroundStyle(design.ink)
+                .scrollContentBackground(.hidden)
+                .focused($briefFocused)
+                .padding(Space.sm)
+                .frame(height: 144)
+                .overlay(alignment: .topLeading) {
+                    if item.brief.isEmpty {
+                        Text("Вставьте бриф или начните писать…")
+                            .font(design.body()).foregroundStyle(design.muted)
+                            .padding(.top, Space.sm + 1).padding(.leading, Space.sm + 5)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
                 }
-                TextEditor(text: Binding(get: { item.brief }, set: { value in store.update(item.id) { $0.brief = value } }))
-                    .font(design.body())
-                    .foregroundStyle(design.ink)
-                    .scrollContentBackground(.hidden)
-                    .frame(height: min(310, max(38, CGFloat(item.brief.count / 60 + item.brief.components(separatedBy: .newlines).count) * 20 + 18)))
-                    .accessibilityLabel("Бриф")
-            }
-            .padding(.leading, -5)
+                .background(design.surface, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(briefFocused ? design.accent : design.line)
+                        .allowsHitTesting(false)
+                }
+                .accessibilityLabel("Бриф")
             Text("Материалы").font(design.heading(20))
             ForEach(item.materials) { material in
                 ChipButton(title: material.title, compact: true) {
