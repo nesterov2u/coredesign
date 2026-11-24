@@ -44,17 +44,21 @@ struct TaskChat: View {
             composer
         }
         .padding(Space.lg)
-        .frame(maxHeight: 610, alignment: .top)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(design.field)
     }
 
     private var history: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
             ForEach(item.messages) { message in
+                let isUser = message.author == "Вы"
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    Text(message.author).font(design.ui(12)).foregroundStyle(design.muted)
+                    if !isUser {
+                        Text(message.author).font(design.ui(12)).foregroundStyle(design.muted)
+                    }
                     Text(message.text).font(design.body())
                         .textSelection(.enabled)
+                        .accessibilityLabel(isUser ? "Вы: \(message.text)" : message.text)
                     if !message.context.isEmpty {
                         Text(message.context.joined(separator: " · "))
                             .font(design.ui(12, bold: false))
@@ -64,6 +68,11 @@ struct TaskChat: View {
                         ChipButton(title: label + " ↗", style: .selected, compact: true) { onResult(label) }
                     }
                 }
+                .padding(.horizontal, isUser ? Space.md : 0)
+                .padding(.vertical, isUser ? Space.sm : 0)
+                .background(isUser ? design.tint : Color.clear, in: RoundedRectangle(cornerRadius: 14))
+                .padding(.leading, isUser ? Space.xxl : 0)
+                .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
             }
             if item.pendingGeneration { confirmation }
         }
