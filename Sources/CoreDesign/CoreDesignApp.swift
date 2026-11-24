@@ -180,7 +180,10 @@ struct Workspace: View {
                         }
                     }
                     .background(design.surface)
-                    .overlay(Rectangle().strokeBorder(design.line))
+                    .overlay {
+                        Rectangle().strokeBorder(design.line)
+                            .allowsHitTesting(false)
+                    }
                 }
             }
             .padding(Space.xxl)
@@ -292,13 +295,15 @@ struct Workspace: View {
                     .frame(maxWidth: .infinity, minHeight: 53, alignment: .leading)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(PressStyle())
+            .buttonStyle(.plain)
             statusMenu(item)
                 .frame(width: 152, alignment: .leading)
             deadlineMenu(item)
                 .frame(width: 100, alignment: .leading)
         }
         .padding(.horizontal, Space.lg)
+        .contentShape(Rectangle())
+        .hoverFeedback(cornerRadius: 0)
     }
 
     private func statusMenu(_ item: WorkItem, asField: Bool = false) -> some View {
@@ -362,10 +367,10 @@ struct Workspace: View {
                         store.update(item.id) { $0.tab = tab }
                     } label: {
                         Text(tab.rawValue)
-                            .font(design.ui())
+                            .font(design.ui(16))
                             .foregroundStyle(selected ? design.accent : design.muted)
-                            .padding(.horizontal, Space.xxs)
-                            .frame(minHeight: 52)
+                            .padding(.horizontal, Space.lg)
+                            .frame(minHeight: 56)
                             .contentShape(Rectangle())
                             .overlay(alignment: .bottom) {
                                 if selected { design.accent.frame(height: 2) }
