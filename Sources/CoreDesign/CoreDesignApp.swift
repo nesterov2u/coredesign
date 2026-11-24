@@ -438,7 +438,6 @@ struct Workspace: View {
                 })
                 .id(item.id)
                 .frame(width: 400)
-                .padding(.bottom, Space.xl)
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
